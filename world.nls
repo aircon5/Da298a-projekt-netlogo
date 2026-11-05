@@ -1,0 +1,607 @@
+globals
+[
+  people-reached-safe-zone
+  people-killed-by-terrorists
+  people-killed-by-stampede
+  exit-1-xcor
+  exit-1-ycor
+  exit-2-xcor
+  exit-2-ycor
+  exit-3-xcor
+  exit-3-ycor
+  exit-4-xcor
+  exit-4-ycor
+  exit-node
+  group_count
+  queue
+  ;;............ for verification
+]
+
+
+patches-own
+[
+  p_type
+  dist
+]
+
+breed [civilians civilian]
+breed [rescuers rescuer]
+breed [nodes node]
+
+civilians-own
+[
+  know-exit
+  vision-distance
+  vision-angle           ; custom civilian attributes
+  journey_list
+  direction_moved
+  group_no
+  leader?
+  
+  target-direction
+
+]
+
+rescuers-own
+[
+  vision-distance
+  vision-angle
+]
+
+nodes-own
+[
+  danger-active
+  place
+  show-direction
+]
+
+;; ---------------- Setup --------------------------------------------
+to bfs
+  let s length queue
+
+  while [s > 0] [
+    let i 0
+
+    while [i < s] [
+      let curr first queue
+      let curr-dist [dist] of curr
+
+      ask curr [
+        ask neighbors4 with [
+          dist = -1 and
+          (pcolor = white or pcolor = 9 or
+           pcolor = green or pcolor = grey or
+           pcolor = red)
+        ] [
+          set dist curr-dist + 1
+          set queue lput self queue
+        ]
+      ]
+
+      set queue but-first queue
+      set i i + 1
+    ]
+
+    set s length queue
+  ]
+end
+
+;; --------------------- Cumulative Setup -----------------------------------
+to setup
+
+  clear-all
+  set queue []
+
+  setup-world
+  setup-exits
+  setup-stairs
+  setup-doors
+  setup-coordinates
+  setup-rooms-and-corridors
+  setup-nodes
+  bfs
+  
+  setup-civilians
+
+  set group_count 0
+  setup-group
+
+
+  reset-ticks
+end
+;; --------------------- Civilian Setup ------------------------------------------------------------
+to setup-civilians
+
+  ask n-of civilians-count  (patches with [pcolor = 9 ]  ) [sprout-civilians 1]
+  ask civilians
+  [
+    set shape "person"
+    set color cyan - 1
+    set size 2
+    set target-direction ""
+
+    ifelse random 100 < Percentage-know-exits
+    [
+      set know-exit true
+      set color magenta
+    ]
+    [ set know-exit false]
+
+    set vision-distance civilian-vision-distance
+    set vision-angle civilian-vision-angle
+    set journey_list []
+    set direction_moved 0
+    set leader? false
+    set group_no 0
+
+  ]
+
+end
+
+to setup-group
+  ask civilians
+  [
+    if random 1000 < 5
+    [
+      set group_count group_count + 1
+      set group_no group_count
+      set leader? true
+      set color orange
+
+      let no-of-civilian_buddies count civilians in-radius 4
+
+      let no-of-people min list no-of-civilian_buddies  4
+
+      ask n-of no-of-people civilians in-radius 4
+      [
+        set group_no group_count
+        set color orange
+      ]
+    ]
+  ]
+
+end
+
+to setup-nodes
+  create-nodes 8
+  [
+    set danger-active false
+    set color 44
+    set shape "square"
+  ]
+  
+  ask node 0 [
+    setxy 52 62
+    set show-direction "left"
+  ]
+
+  ask node 1 [
+    setxy 75 62
+    set show-direction "left"
+  ]
+
+  ask node 2 [
+    setxy 84 62
+    set show-direction "left"
+  ]
+  ask node 3 [
+    setxy 47 40
+    set show-direction "right" 
+  ]
+  ask node 4 [
+    setxy 56 52
+    set show-direction "right" ;kontroll så gubbar faktiskt följer pilen 
+  ]
+
+  ask node 5 [
+    setxy 76 52
+    set show-direction "right"
+  ]
+
+  ask node 6 [
+    setxy 96 52
+    set show-direction "down" 
+  ]
+  ask node 7 [
+    setxy 106 42
+    set show-direction "left"
+  ]
+end
+
+
+
+;; ----------------------------- Setup Environment  ---------------------------------------------------------------------------------------
+to setup-coordinates
+  set exit-1-xcor 10
+  set exit-1-ycor 43
+
+  set exit-2-xcor 143
+  set exit-2-ycor 43
+
+  set people-reached-safe-zone 0
+  set people-killed-by-terrorists 0
+  set people-killed-by-stampede 0
+end
+
+
+
+to setup-world
+
+  import-pcolors "orkanenA3.png"
+  ask patches with [pcolor >= 0 and pcolor <= 9.2 ]
+  [
+    set pcolor black
+    set p_type "walls"
+  ]
+  ask patches with [pcolor != black ] [ set pcolor white ]
+  ask patches with [pcolor = black or pcolor = yellow ] [ set dist 100000 ]
+
+end
+
+to setup-exits
+  ask patches [
+     if pcolor = white [
+      set dist -1
+    ]
+    if pxcor >= 143 and pxcor <= 144 and pycor >= 42 and pycor <= 43 [set pcolor red set p_type "safe" set dist 0 set queue lput self queue]
+    if pxcor >= 10 and pxcor <= 11 and pycor >= 39 and pycor <= 40 [set pcolor red set p_type "safe" set dist 0 set queue lput self queue]
+    ;if pxcor >= 73 and pxcor <= 78 and pycor >= 50 and pycor <= 51 [set pcolor red set p_type "safe" set dist 0 set queue lput self queue]
+  ]
+end
+
+to setup-doors
+  ask patches [
+    if pxcor = 48 and pycor >= 39  and pycor <= 43 [set pcolor green set p_type "door" ]
+    if pxcor >= 50 and pxcor <= 53 and pycor = 61 [set pcolor green set p_type "door" ]
+    if pxcor >= 74 and pxcor <= 77 and pycor = 61 [set pcolor green set p_type "door" ]
+    if pxcor >= 82 and pxcor <= 85 and pycor = 61 [set pcolor green set p_type "door" ]
+    if pxcor = 62 and pycor >= 66 and pycor <= 68 [set pcolor green set p_type "door" ]
+    if pxcor = 105 and pycor >= 39 and pycor <= 43 [set pcolor green set p_type "door" ]
+  ]
+end
+
+;to setup-signs
+;  ask patches[
+ ;   if pxcor = 54 and pycor = 62 [set pcolor yellow set p_type "sign"]
+ ;   if pxcor = 73 and pycor = 62 [set pcolor yellow set p_type "sign"]
+ ;   if pxcor = 86 and pycor = 62 [set pcolor yellow set p_type "sign"]
+ ; ]
+  
+;end
+
+;to setup-stairs
+;  if exit-signs [
+;    ask patches [
+;      if pxcor >= 36 and pxcor <= 47 and pycor >= 42 and pycor <= 43 [set pcolor grey set p_type "stair"]
+;      if pxcor >= 12 and pxcor <= 21 and pycor >= 42 and pycor <= 43 [set pcolor grey set p_type "stair"]
+;      if pxcor >= 23 and pxcor <= 34 and pycor >= 42 and pycor <= 43 [set pcolor grey set p_type "stair"]
+;      if pxcor >= 36 and pxcor <= 47 and pycor >= 39 and pycor <= 40 [set pcolor grey set p_type "stair"]
+;      if pxcor >= 12 and pxcor <= 21 and pycor >= 39 and pycor <= 40 [set pcolor grey set p_type "stair"]
+;      if pxcor >= 23 and pxcor <= 34 and pycor >= 39 and pycor <= 40 [set pcolor grey set p_type "stair"]
+;
+;      if pxcor >= 106 and pxcor <= 117 and pycor >= 42 and pycor <= 43 [set pcolor grey set p_type "stair"]
+;      if pxcor >= 119 and pxcor <= 130 and pycor >= 42 and pycor <= 43 [set pcolor grey set p_type "stair"]
+;      if pxcor >= 132 and pxcor <= 142 and pycor >= 42 and pycor <= 43 [set pcolor grey set p_type "stair"]
+;      if pxcor >= 106 and pxcor <= 117 and pycor >= 39 and pycor <= 40 [set pcolor grey set p_type "stair"]
+;      if pxcor >= 119 and pxcor <= 130 and pycor >= 39 and pycor <= 40 [set pcolor grey set p_type "stair"]
+;      if pxcor >= 132 and pxcor <= 142 and pycor >= 39 and pycor <= 40 [set pcolor grey set p_type "stair"]
+;    ]
+;  ]
+;end
+
+to setup-stairs
+  ask patches[
+    if pxcor >= 12 and pxcor <= 47 and pycor = 41 [set pcolor black set p_type "walls"]
+    if pxcor >= 106 and pxcor <= 142 and pycor = 41 [set pcolor black set p_type "walls"]
+    if pxcor >= 12 and pxcor <= 47 and pycor >= 42 and pycor <= 43 [set pcolor grey set p_type "stair"]
+    if pxcor >= 12 and pxcor <= 47 and pycor >= 39 and pycor <= 40 [set pcolor grey set p_type "stair"]
+    if pxcor >= 106 and pxcor <= 142 and pycor >= 42 and pycor <= 43 [set pcolor grey set p_type "stair"]
+    if pxcor >= 106 and pxcor <= 142 and pycor >= 39 and pycor <= 40 [set pcolor grey set p_type "stair"]
+  ]
+  
+end
+
+to setup-rooms-and-corridors
+  ask patches[
+    if pxcor >= 47 and pxcor <= 61 and pycor >= 62 and pycor <= 69 [set pcolor 9 set p_type "room"]
+    if pxcor >= 63 and pxcor <= 78 and pycor >= 62 and pycor <= 69 [set pcolor 9 set p_type "room"]
+    if pxcor >= 80 and pxcor <= 107 and pycor >= 62 and pycor <= 69 [set pcolor 9 set p_type "room"]
+    
+    if pxcor >= 49 and pxcor <= 56 and pycor >= 39 and pycor <= 60 [set pcolor 9 set p_type "room"]
+    if pxcor >= 57 and pxcor <= 95 and pycor >= 52 and pycor <= 60 [set pcolor 9 set p_type "room"]
+    if pxcor >= 96 and pxcor <= 104 and pycor >= 39 and pycor <= 60 [set pcolor 9 set p_type "room"]
+  ]
+  
+end
+
+;; ----------------- go --------------------------------------------
+to go
+
+  if count civilians = 0 
+  [
+    stop
+  ]
+
+  ask civilians
+  [
+   
+   civilian-movement
+   reached-safe-zone
+   follow-signs
+    ;know-path
+  ]
+  
+  
+
+  tick
+end
+
+;; ------------------- Nodes methods -----------------------------------------------------
+
+to update-direction
+  ;set show-exit random 2
+  
+end
+
+;; ------------------- Civilian methods --------------------------------------------------
+
+to civilian-movement
+
+  let target-patch min-one-of (patches with [pcolor = yellow]) [distance myself]
+  set journey_list fput (list int who int xcor int ycor) journey_list
+
+  let close-wall one-of neighbors with [ pcolor = green or pcolor = black ] in-radius 3
+  let exit-patch one-of neighbors with [ pcolor = red ] in-radius 3
+
+  ifelse group_no = 0 or (group_no > 0 and leader? = true)
+  [
+    ifelse close-wall = nobody and exit-patch = nobody
+    [
+      ;ifelse know-exit = true
+      ;[
+       ; know-path
+      ;]
+      ;[
+        follow-path
+      ;]
+    ]
+    [
+      know-path
+    ]
+  ]
+  [
+    follow-leader
+  ]
+
+end
+
+to direction-movement
+  if length journey_list >= 2
+  [
+    let outer_one_x_latest  item 0 journey_list
+    let inner_one_x_latest  item 1 outer_one_x_latest
+
+    let outer_one_x_previous item 1 journey_list
+    let inner_one_x_previous item 1 outer_one_x_previous
+
+    let x_change  inner_one_x_latest -  inner_one_x_previous
+
+    ;; FOR Y co-ords
+
+    let outer_one_y_latest  item 0 journey_list
+    let inner_one_y_latest  item 2 outer_one_y_latest
+
+    let outer_one_y_previous item 1 journey_list
+    let inner_one_y_previous item 2 outer_one_y_previous
+
+    let y_change  inner_one_y_latest -  inner_one_y_previous
+
+    if x_change != 0 or  y_change != 0
+    [
+      set  direction_moved heading
+    ]
+
+  ]
+
+end
+
+to know-path
+  let possible-patches neighbors4 with [
+    dist >= 0 and
+    (pcolor = white or pcolor = red or
+     pcolor = green or pcolor = grey or pcolor = 9)
+  ]
+
+  if any? possible-patches [
+    let p min-one-of possible-patches [dist]
+
+    if [dist] of p < [dist] of patch-here [
+      face p
+      move-to p
+    ]
+  ]
+end
+
+to follow-path
+
+  let neighbour-patches patches in-cone vision-distance vision-angle
+  let neighbour-civilia civilians-on neighbour-patches
+  let neighbour-civilians neighbour-civilia with [color = magenta]
+  let directions_angles []
+
+  ifelse any? neighbour-civilians
+  [
+    ask neighbour-civilians
+    [
+      if direction_moved != 0
+      [
+        set directions_angles fput (direction_moved) directions_angles
+      ]
+    ]
+    if length directions_angles != 0
+    [
+      let max-dir-list modes directions_angles
+      let max_no_follow item 0 max-dir-list
+      set heading max_no_follow
+      fd 1
+    ]
+  ]
+  [
+    rt random 360
+    fd 1
+  ]
+
+end
+
+
+
+to follow-leader
+
+  let mygroup group_no
+  let leader-civilian civilians with [group_no = mygroup and leader? = true ]
+  let directions_angles []
+
+
+  ifelse any? leader-civilian
+  [
+    ask leader-civilian
+    [
+      if direction_moved != 0
+      [
+        set directions_angles fput ( direction_moved ) directions_angles
+      ]
+    ]
+    if length directions_angles != 0
+    [
+      let max-dir-list modes directions_angles
+      let max_no_follow  item 0 max-dir-list
+      let close-wall one-of neighbors with [ pcolor = yellow or pcolor = black  ] in-radius 3
+
+      ifelse close-wall != nobody
+      [
+        face close-wall
+        rt 180
+        fd 1
+      ]
+      [
+        set heading max_no_follow
+        fd 1
+      ]
+    ]
+  ]
+  [
+    know-path
+  ]
+
+end
+
+
+to reached-safe-zone
+  ask patches with [pcolor = red] [
+    ask civilians in-radius 1
+    [
+      set people-reached-safe-zone people-reached-safe-zone + 1
+      die
+    ]
+  ]
+end
+
+
+to follow-node-direction
+  if target-direction = "down" [
+    set direction_moved 180
+    fd 1
+  ]
+
+  if target-direction = "left" [
+    set direction_moved 270
+    fd 1
+  ]
+
+  if target-direction = "right" [
+    set direction_moved 90
+    fd 1
+  ]
+end
+
+
+to read-node-direction
+  let visible-nodes
+    nodes in-cone vision-distance vision-angle
+
+  if any? visible-nodes [
+    let nearest-node
+      min-one-of visible-nodes [distance myself]
+
+    set target-direction [show-direction] of nearest-node
+    set know-exit true
+  ]
+end
+
+to follow-signs
+  let signs one-of nodes in-cone vision-distance vision-angle
+
+  if signs != nobody [
+    ;set know-exit  true
+    follow-node-direction
+    set color violet
+  ]
+end
+
+
+;;-------------------------- Verification ---------------------------------------------------
+
+to verify-setup
+  print "for verify-setup "
+  let wall_count count patches with [pcolor = black]
+  let sign_count count patches with [pcolor = yellow]
+  let exit_count count patches with [pcolor = green]
+  ifelse  wall_count != 0 and sign_count != 0 and exit_count != 0
+  [
+    print "\n\nEncironemnt setup is valid. "
+  ]
+  [
+    print "\n\nEnvironment setup failed."
+  ]
+  type "\n No.of civilians : " type count civilians type "\n"
+  type "\n No.of rescue agents : " type count rescuers type "\n"
+  let x count civilians with [know-exit = true]
+  type "percentage  of known (calculated) : " type ((x / count civilians) * 100)
+end
+
+
+;;----------------------- Validation ----------------------------------------------------
+
+to validate-civilians
+  clear-all
+  set queue []
+  setup-world
+  set civilians-count 100
+  setup-civilians
+  setup-exits
+  ;setup-signs
+
+  bfs
+  reset-ticks
+end
+to go-validation
+  if count civilians = 0
+  [
+    type "\nNo.of people survived : " type people-reached-safe-zone
+    type "\n ticks taken to complete" type ticks
+    if people-reached-safe-zone = civilians-count
+    [
+      type "\nEveryone escaped because there are no terrorists and stampede"
+    ]
+    stop
+  ]
+  ask civilians
+  [
+    civilian-movement
+    reached-safe-zone
+    follow-node-direction
+  ]
+
+
+  tick
+end

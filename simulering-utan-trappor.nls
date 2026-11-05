@@ -1,0 +1,330 @@
+
+globals
+[
+  exit
+  A-counter
+  B-counter
+  testnumber
+]
+
+
+breed [civilians civilian]
+breed [nodes node]
+
+nodes-own [
+  directions
+]
+civilians-own [
+  current-node
+  vision-distance
+  vision-angle
+  current-direction
+  direction-chosen?
+  evacuated?
+  exited
+  following-person
+]
+
+patches-own [
+  dist
+  p_type
+]
+
+to setup
+  clear-all
+  set A-counter 0
+  set B-counter 0
+  
+  setup-world
+  setup-stairs
+  setup-rooms-and-corridors
+  
+  
+  ask n-of civilians-count  (patches with [pcolor = 9 ]  ) [sprout-civilians 1]
+  ask civilians
+  [
+    set color blue
+    set shape "person"
+    set size 2
+    set vision-distance 10
+    set vision-angle 134
+    set current-direction 0
+    set direction-chosen? false
+    set evacuated? false
+    set exited ""
+    set following-person nobody
+    
+  ]
+  
+
+  create-nodes 12
+  [
+    set size 2
+    set color 44
+   
+  ]
+    
+  
+  ask patch 40 58 
+  [
+    set pcolor red
+    set plabel "A"
+    
+  ]
+  ask patch 178 51  
+  [
+    set pcolor red
+    set plabel "B"
+    
+  ]
+
+
+
+  
+  reset-ticks
+end
+
+
+
+to setup-world
+
+  import-pcolors "A3_nr5.png"
+  ask patches with [pcolor >= 0 and pcolor <= 9.2 ]
+  [
+    set pcolor black
+    set p_type "walls"
+  ]
+  ask patches with [pcolor >= 51 and pcolor <= 69 ]
+  [
+    set pcolor green
+    set p_type "doors"
+  ]
+  ask patches with [pcolor != black and pcolor != green] [ set pcolor white ]
+  ask patches with [pcolor = black or pcolor = yellow ] [ set dist 100000 ]
+
+end
+
+
+to setup-stairs
+  ask patches[
+    if pxcor >= 38 and pxcor <= 49 and pycor >= 42 and pycor <= 60 [set pcolor grey set p_type "stair"]
+    if pxcor >= 164 and pxcor <= 179 and pycor >= 48 and pycor <= 60 [set pcolor grey set p_type "stair"]
+    if pxcor = 43 and pycor >= 42 and pycor <= 60 [set pcolor black set p_type "walls"]
+    if pxcor >= 164 and pxcor <= 179 and pycor = 54 [set pcolor black set p_type "walls"]
+    
+    if pxcor >= 20 and pxcor <= 30 and pycor >= 42 and pycor <= 60 [set pcolor grey set p_type "stair" set plabel "2"]
+    if pxcor >= 20 and pxcor <= 30 and pycor >= 67 and pycor <= 85 [set pcolor grey set p_type "stair" set plabel "1"]
+    if pxcor = 25 and pycor >= 46 and pycor <= 60 [set pcolor black set p_type "walls" set plabel ""]
+    if pxcor = 25 and pycor >= 67 and pycor <= 85 [set pcolor black set p_type "walls" set plabel ""]
+  ]
+  
+end
+
+to setup-rooms-and-corridors
+  ask patches[
+    if pxcor >= 40 and pxcor <= 73 and pycor >= 82 and pycor <= 110 [set pcolor 9 set p_type "room" set plabel "A"]
+    if pxcor >= 76 and pxcor <= 105 and pycor >= 82 and pycor <= 110 [set pcolor 9 set p_type "room" set plabel "B"]
+    if pxcor >= 107 and pxcor <= 140 and pycor >= 78 and pycor <= 110 [set pcolor 9 set p_type "room" set plabel "C"]
+    if pxcor >= 142 and pxcor <= 166 and pycor >= 78 and pycor <= 110 [set pcolor 9 set p_type "room" set plabel "D"]
+    
+   
+  ]
+  
+end
+
+
+to go 
+  if count civilians = 0 
+  [
+    stop
+  ]
+
+  update-sign-direction
+  move-civilians
+  tick
+  
+end
+
+
+to move-civilians
+  ask civilians [
+    
+    ifelse [pcolor] of patch-here = red [
+      ifelse [plabel] of patch-here = "A"
+      [set A-counter (A-counter + 1) set exited "A"]
+      [set B-counter (B-counter + 1) set exited "B"]
+      set evacuated? true
+      die
+    ]
+    [
+      move
+    ]
+
+  ]
+end
+
+to follow-node-direction
+  let signs nodes in-cone vision-distance vision-angle
+  
+  ifelse any? signs [
+    let target-node min-one-of signs [distance myself]
+    
+    set current-node target-node
+    ifelse distance current-node > 4
+    [
+      set current-direction towards current-node
+      set heading current-direction
+    ]
+    [
+      set current-direction one-of [directions] of target-node
+      set direction-chosen? true
+      set heading current-direction
+    ]
+    
+    not-move-in-wall
+    
+    set color violet
+  ]
+  [
+    ifelse direction-chosen? [
+      set heading current-direction
+      not-move-in-wall
+    ]
+    [
+      set heading random 360
+      not-move-in-wall
+    ]
+  ]
+  
+end
+
+to follow-person-infront
+  let person-to-follow one-of other civilians in-cone 3 90 
+  ifelse person-to-follow != nobody and not creates-following-circle? person-to-follow
+  [
+    let direction-ahead [heading] of person-to-follow
+    let difference abs subtract-headings direction-ahead heading
+    
+    ifelse difference < 60 [
+      set current-direction person-to-follow
+      face current-direction
+      set direction-chosen? false
+      not-move-in-wall
+      set color pink
+    ]
+    [set color blue follow-node-direction]
+  ] 
+  [set color blue follow-node-direction]
+end
+
+to move
+  
+
+  let exits patches in-radius 5 with [pcolor = red]
+  let doors patches in-radius 10 with [pcolor = green]
+
+  ifelse any? exits 
+  [
+    let target min-one-of exits [distance myself]
+    face target
+
+    not-move-in-wall
+    set color green
+  ]
+  [
+    follow-person-infront
+    
+  ]
+
+
+  
+end
+
+to not-move-in-wall
+  let tries 0
+  
+  while [tries < 4] [
+    ifelse patch-ahead 1 != nobody and [pcolor] of patch-ahead 1 != black
+    [
+      fd 1
+      set tries 4
+    ]
+    [
+      rt 90
+      set tries tries + 1
+      
+    ]
+  ]
+end
+
+
+to update-sign-direction
+ ask node (civilians-count)[
+    setxy 44 82
+    set directions [145]
+    set heading 145
+  ]
+  ask node (civilians-count + 1)[
+    setxy 55 62
+    set directions [180]
+    set heading 180
+  ]
+  ask node (civilians-count + 2)[
+    setxy 100 78
+    set directions [180]
+    set heading 180
+  ]
+  ask node (civilians-count + 3)[
+    setxy 128 78
+    set directions [180]
+    set heading 180
+  ]
+  ask node (civilians-count + 4)[
+    setxy 153 78
+    set directions [180]
+    set heading 180
+  ]
+  ask node (civilians-count + 5)[
+    setxy 57 38
+    set directions [270]
+    set heading 270
+  ]
+  ask node (civilians-count + 6)[
+    setxy 38 43
+    set directions [0]
+    set heading 0
+  ]
+  ask node (civilians-count + 7)[
+    setxy 160 61
+    set directions [180]
+    set heading 180
+  ]
+  ask node (civilians-count + 8)[
+    setxy 164 48
+    set directions [90]
+    set heading 90
+
+  ]
+  ask node (civilians-count + 9)[
+    setxy 100 63
+    set directions [90]
+    set heading 90
+  ]
+  ask node (civilians-count + 10)[
+    setxy 128 70
+    set directions [90]
+    set heading 90
+  ]
+  ask node (civilians-count + 11)[
+    setxy 153 70
+    set directions [135]
+    set heading 135
+  ]
+end
+
+to-report creates-following-circle? [person]
+  if person = nobody [ report false ]
+  if person = self [ report true ]
+  if [following-person] of person = nobody [ report false ]
+  report creates-following-circle? [following-person] of person
+end

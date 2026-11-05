@@ -1,0 +1,270 @@
+globals
+[
+  exit
+  A-counter
+  B-counter
+  testnumber
+]
+
+
+breed [civilians civilian]
+breed [nodes node]
+
+nodes-own [
+  directions
+]
+civilians-own [
+  current-node
+  vision-distance
+  vision-angle
+  current-direction
+  direction-chosen?
+  evacuated?
+  exited
+  following-person
+]
+
+patches-own [
+  dist
+  p_type
+]
+
+
+
+to setup
+  clear-all
+  set A-counter 0
+  set B-counter 0
+  
+  import-pcolors "testphaseva.png"
+  ask patches with [pcolor >= 0 and pcolor <= 9.2 ]
+  [
+    set pcolor black
+    set p_type "walls"
+  ]
+  ask patches with [pcolor != black ] [ set pcolor white ]
+  ask patches with [pcolor = black or pcolor = yellow ] [ set dist 100000 ]
+  
+
+  ask patches[
+    if pxcor >= 3 and pxcor <= 14 and pycor >= 31 and pycor <= 37 [set pcolor 9 set p_type "roomA"]
+    if pxcor >= 26 and pxcor <= 37 and pycor >= 31 and pycor <= 37 [set pcolor 9 set p_type "roomB"]
+  ]
+  
+
+  
+    create-civilians 200
+  [
+    set color blue
+    set shape "person"
+    setxy (ifelse-value (random 2 = 0) [3 + random 12] [26 + random 12]) (31 + random 7)
+    set size 1
+    set vision-distance 10
+    set vision-angle 134
+    set current-direction 0
+    set direction-chosen? false
+    set evacuated? false
+    set exited ""
+    set following-person nobody
+    
+  ]
+  
+  create-nodes 5
+  [
+   set color 44
+
+  ]
+    
+  
+  ask patch 5 3 
+  [
+    set pcolor red
+    set plabel "A"
+    
+  ]
+  ask patch 35 3  
+  [
+    set pcolor red
+    set plabel "B"
+    
+  ]
+  ask node 200[
+    setxy 1 34
+    set directions [90]
+    set heading 90
+  ]
+  ask node 201[
+    setxy 39 34
+    set directions [270]
+    set heading 270
+  ]
+  ask node 202[
+    setxy 20 34
+    set directions [180]
+    set heading 180
+  ]
+;   ask node 203[
+;     setxy 20 24
+;     set directions [90]
+;     set heading 90
+
+;   ]
+;   ask node 204[
+;     setxy 38 26
+;     set directions [180]
+;     set heading 180
+;   ]
+  
+  ask node 203[
+    setxy 20 24
+    set directions [270]
+    
+    set heading 270
+
+  ]
+  ask node 204[
+    setxy 2 26
+    set directions [180]
+    set heading 180
+  ]
+  
+  reset-ticks
+end
+
+to go
+  if count civilians = 0 
+  [
+    stop
+  ]
+  move-civilians
+  tick
+  
+end
+
+to move-civilians
+  ifelse ticks < 50
+  [
+    ask civilians with [[p_type] of patch-here != "roomA"] 
+    [    
+      ifelse [pcolor] of patch-here = red [
+        ifelse [plabel] of patch-here = "A"
+        [set A-counter (A-counter + 1) set exited "A"]
+        [set B-counter (B-counter + 1) set exited "B"]
+        set evacuated? true
+        die
+      ]
+      [
+        move
+      ] 
+    ]
+  ]
+  [
+    ask civilians [
+      ifelse [pcolor] of patch-here = red [
+        ifelse [plabel] of patch-here = "A"
+        [set A-counter (A-counter + 1) set exited "A"]
+        [set B-counter (B-counter + 1) set exited "B"]
+        set evacuated? true
+        die
+      ]
+      [
+        move
+      ] 
+    ]
+  ]
+  
+end
+
+to follow-node-direction
+  let signs nodes in-cone vision-distance vision-angle
+  
+  ifelse any? signs [
+    let target-node min-one-of signs [distance myself]
+    
+    set current-node target-node
+    ifelse distance current-node < 4
+    [
+      set current-direction one-of [directions] of target-node
+      set direction-chosen? true
+      set heading current-direction
+    ]
+    [
+      set current-direction current-node
+      face current-direction
+      set direction-chosen? false
+    ]
+    
+    not-move-in-wall
+    
+    set color violet
+  ]
+  [
+    ifelse direction-chosen? [
+      set heading current-direction
+      not-move-in-wall
+    ]
+    [
+      set heading random 360
+      not-move-in-wall
+    ]
+  ]
+  
+end
+
+to follow-person-infront
+  let person-to-follow one-of other civilians in-cone 3 90 
+  ifelse person-to-follow != nobody and [following-person != myself] of person-to-follow
+  [
+    let direction-ahead [heading] of person-to-follow
+    let difference abs subtract-headings direction-ahead heading
+    
+    ifelse difference < 60 [
+      set current-direction person-to-follow
+      face current-direction
+      set direction-chosen? false
+      not-move-in-wall
+      set color pink
+    ]
+    [set color blue follow-node-direction]
+  ] 
+  [set color blue follow-node-direction]
+end
+
+to move
+  
+
+  let exits patches in-radius 5 with [pcolor = red]
+
+  ifelse any? exits [
+    let target min-one-of exits [distance myself]
+    face target
+
+    not-move-in-wall
+    set color green
+  ]
+  [
+    ;follow-person-infront
+    follow-node-direction
+  ]
+
+
+  
+end
+
+to not-move-in-wall
+  let tries 0
+
+  while [tries < 4] [
+    ifelse patch-ahead 1 != nobody and
+      [pcolor] of patch-ahead 1 != black
+    [
+      fd 1
+      set tries 4
+    ]
+    [
+      rt 90
+      set tries tries + 1
+    ]
+  ]
+end
+
